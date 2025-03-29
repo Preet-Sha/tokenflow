@@ -623,7 +623,7 @@ const AiTokenMarketplaceLanding = () => {
             </div>
           </div>
           <p className="text-gray-400 text-center">
-            © 2024 TokenFlow. All rights reserved.
+            © 2025 TokenFlow. All rights reserved.
           </p>
         </div>
       </footer>
