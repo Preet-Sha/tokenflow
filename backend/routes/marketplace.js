@@ -205,15 +205,35 @@ router.post('/buy/:listingId', auth, async (req, res) => {
         return res.status(400).json({ message: 'Cannot buy your own tokens' });
       }
       
+      // Calculate total amount
+      const totalAmount = tokensToBuy * listing.pricePerToken;
+      
+      // Get buyer and seller
+      const buyer = await User.findById(req.user._id).session(session);
+      const seller = await User.findById(listing.seller).session(session);
+      
+      // Check if buyer has enough balance
+      if (buyer.amount < totalAmount) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({ 
+          message: 'Insufficient balance',
+          balance: buyer.amount,
+          required: totalAmount
+        });
+      }
+      
+      // Update buyer's balance (deduct amount)
+      buyer.amount -= totalAmount;
+      
+      // Update seller's balance (add amount)
+      seller.amount = (seller.amount || 0) + totalAmount;
+      
       // Update listing
       listing.tokensForSale -= tokensToBuy;
       if (listing.tokensForSale === 0) {
         listing.isActive = false;
       }
-      await listing.save({ session });
-      
-      // Get seller
-      const seller = await User.findById(listing.seller).session(session);
       
       // Create transaction
       const transaction = new Transaction({
@@ -223,14 +243,10 @@ router.post('/buy/:listingId', auth, async (req, res) => {
         apiKeyName: listing.apiKeyName,
         tokensPurchased: tokensToBuy,
         pricePerToken: listing.pricePerToken,
-        totalAmount: tokensToBuy * listing.pricePerToken
+        totalAmount: totalAmount
       });
       
-      await transaction.save({ session });
-      
       // Add temporary token to buyer
-      const buyer = await User.findById(req.user._id).session(session);
-      
       buyer.temporaryTokens.push({
         originalApiKeyId: listing.apiKeyId,
         sellerId: listing.seller,
@@ -238,7 +254,11 @@ router.post('/buy/:listingId', auth, async (req, res) => {
         tokensRemaining: tokensToBuy
       });
       
+      // Save all changes
       await buyer.save({ session });
+      await seller.save({ session });
+      await listing.save({ session });
+      await transaction.save({ session });
       
       await session.commitTransaction();
       session.endSession();

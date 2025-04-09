@@ -73,8 +73,9 @@ const Market = () => {
     setProcessingPurchase(true);
     
     try {
+      // Direct API call to buy tokens
       await axios.post(`/api/marketplace/buy/${purchaseDetails.listing._id}`, { 
-        tokensToBuy: purchaseDetails.amount 
+        tokensToBuy: purchaseDetails.amount
       });
       
       // Show success message briefly
@@ -97,7 +98,6 @@ const Market = () => {
       setProcessingPurchase(false);
     }
   };
-
   const handleSearch = (e) => {
     const query = e.target.value.toLowerCase();
     setSearchQuery(query);
