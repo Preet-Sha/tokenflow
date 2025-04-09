@@ -75,82 +75,113 @@ router.get('/available-models', auth, async (req, res) => {
   }
 });
 
-// ========= Buy tokens from sellers ========= //
 router.post('/buy-tokens', auth, async (req, res) => {
+  const session = await User.startSession();
+  session.startTransaction();
+
   try {
-    const { sellerId, tokenId, amount } = req.body;
-    if (!sellerId || !tokenId || !amount || amount <= 0) {
-      return res.status(400).json({ message: 'Seller ID, token ID, and valid amount are required' });
+    const { sellerId, tokenId } = req.body;
+    const amount = Number(req.body.amount);
+
+    // Validate input
+    if (!sellerId || !tokenId || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Seller ID, token ID, and valid numeric amount are required' });
     }
 
-    // Find the buyer (current user)
-    const buyer = await User.findById(req.user._id);
-    if (!buyer) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    // Fetch buyer
+    const buyer = await User.findById(req.user._id).session(session);
+    if (!buyer) return res.status(404).json({ message: 'Buyer not found' });
 
-    // Check if buyer has enough balance
+    // Check buyer balance
     if (buyer.amount < amount) {
       return res.status(400).json({ message: 'Insufficient balance. Please add funds to continue.' });
     }
 
-    // Find the seller
-    const seller = await User.findById(sellerId);
-    if (!seller) {
-      return res.status(404).json({ message: 'Seller not found' });
-    }
+    // Fetch seller
+    const seller = await User.findById(sellerId).session(session);
+    if (!seller) return res.status(404).json({ message: 'Seller not found' });
 
-    // Find the token being sold
+    // Find the token
     const token = seller.temporaryTokens.find(t => t._id.toString() === tokenId);
-    if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
-    }
+    if (!token) return res.status(404).json({ message: 'Token not found' });
 
-    // Calculate how many tokens the buyer will receive
+    // Calculate how many tokens to transfer
     const tokensToReceive = Math.floor(amount / token.pricePerToken);
     if (tokensToReceive <= 0) {
       return res.status(400).json({ message: 'Amount too small to purchase any tokens' });
     }
 
-    // Check if seller has enough tokens to sell
     if (token.tokensRemaining < tokensToReceive) {
       return res.status(400).json({ message: 'Seller does not have enough tokens available' });
     }
 
-    // Update buyer's balance
-    buyer.amount -= amount;
+    // Calculate the actual amount to be paid based on tokens purchased
+    const actualAmount = tokensToReceive * token.pricePerToken;
 
-    // Update seller's balance
-    seller.amount += amount;
+    // Deduct buyer's balance by the actual amount
+    buyer.amount -= actualAmount;
 
-    // Update token remaining count
+    // Add seller's balance
+    seller.amount += actualAmount;
+
+    // Update seller token balance
     token.tokensRemaining -= tokensToReceive;
 
-    // Add the purchased tokens to the buyer's account
-    buyer.temporaryTokens.push({
-      name: token.name,
-      apiKey: token.apiKey, // This should be encrypted
-      tokensRemaining: tokensToReceive,
-      expiresAt: token.expiresAt,
-      pricePerToken: token.pricePerToken
-    });
+    // Find if buyer already has a token from this seller with the same name
+    const existingTokenIndex = buyer.temporaryTokens.findIndex(t =>
+      t.name === token.name && t.sellerId.toString() === sellerId
+    );
 
-    // Remove token from seller if no tokens remaining
+    let purchasedToken;
+
+    if (existingTokenIndex !== -1) {
+      // Update existing token
+      buyer.temporaryTokens[existingTokenIndex].tokensRemaining += tokensToReceive;
+      purchasedToken = buyer.temporaryTokens[existingTokenIndex];
+    } else {
+      // Add as a new token
+      const newToken = {
+        name: token.name,
+        apiKey: token.apiKey, // should already be encrypted
+        tokensRemaining: tokensToReceive,
+        expiresAt: token.expiresAt,
+        pricePerToken: token.pricePerToken,
+        sellerId: seller._id,
+        originalApiKeyId: token.originalApiKeyId
+      };
+      buyer.temporaryTokens.push(newToken);
+      purchasedToken = buyer.temporaryTokens[buyer.temporaryTokens.length - 1];
+    }
+
+    // Remove depleted token from seller
     if (token.tokensRemaining <= 0) {
       seller.temporaryTokens = seller.temporaryTokens.filter(t => t._id.toString() !== tokenId);
     }
 
-    // Save changes
-    await Promise.all([buyer.save(), seller.save()]);
+    // Save both buyer and seller atomically
+    await buyer.save({ session });
+    await seller.save({ session });
 
-    res.json({
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.json({
       message: 'Tokens purchased successfully',
       tokensReceived: tokensToReceive,
-      remainingBalance: buyer.amount
+      amountSpent: actualAmount,
+      remainingBalance: buyer.amount,
+      purchasedToken: {
+        _id: purchasedToken._id,
+        name: purchasedToken.name,
+        tokensRemaining: purchasedToken.tokensRemaining,
+        expiresAt: purchasedToken.expiresAt
+      }
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error('Error purchasing tokens:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    return res.status(500).json({ message: 'Failed to complete token purchase', error: error.message });
   }
 });
 
@@ -177,8 +208,20 @@ router.post('/chat', auth, async (req, res) => {
         return res.status(400).json({ message: 'Insufficient tokens. Please purchase more.' });
       }
 
-      apiKey = decrypt(tempKey.apiKey);
-      provider = getProviderFromModel(tempKey.name);
+      // Find the seller user
+      const seller = await User.findById(tempKey.sellerId);
+      if (!seller) {
+        return res.status(404).json({ message: 'Seller not found' });
+      }
+
+      // Find the original API key in seller's API keys
+      const originalApiKey = seller.api_keys.find(k => k._id.toString() === tempKey.originalApiKeyId.toString());
+      if (!originalApiKey) {
+        return res.status(404).json({ message: 'Original API key not found' });
+      }
+
+      apiKey = decrypt(originalApiKey.key);
+      provider = getProviderFromModel(tempKey.apiKeyName || originalApiKey.name);
 
       const response = await handleProviderRequest(provider, message, modelId, apiKey);
       const tokensUsed = response.usage.totalTokens;
@@ -232,7 +275,6 @@ router.post('/chat', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
 // ========= Provider handlers ========= //
 
 async function handleProviderRequest(provider, message, modelId, apiKey) {

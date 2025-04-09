@@ -1,10 +1,8 @@
-// client/src/components/chat/ChatInterface.jsx
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import ChatMessage from './ChatMessage';
 import ApiKeySelector from './ApiKeySelector';
-import ModelSelector from './ModelSelector';
 
 const ChatInterface = () => {
   const { user } = useContext(AuthContext);
@@ -13,8 +11,6 @@ const ChatInterface = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedApiKey, setSelectedApiKey] = useState('');
-  const [selectedModel, setSelectedModel] = useState('');
-  const [availableModels, setAvailableModels] = useState([]);
   const [tokenUsage, setTokenUsage] = useState({
     prompt: 0,
     completion: 0,
@@ -24,23 +20,22 @@ const ChatInterface = () => {
   const [userApiKeys, setUserApiKeys] = useState([]);
   const messagesEndRef = useRef(null);
 
-  // Fetch user's API keys (both temporary and user-owned) on component mount
   useEffect(() => {
     const fetchApiKeys = async () => {
       try {
-        // Fetch temporary keys
         const tempKeysRes = await axios.get('/api/users/temporary-keys');
         setTemporaryKeys(tempKeysRes.data);
-        
-        // Fetch user's own API keys
+
         const userKeysRes = await axios.get('/api/users/api-keys');
         setUserApiKeys(userKeysRes.data);
-        
-        // Auto-select a key if available (prioritize temporary keys)
+
+        // Select first available key
         if (tempKeysRes.data.length > 0) {
-          setSelectedApiKey(`temp-${tempKeysRes.data[0]._id}`);
+          const key = tempKeysRes.data[0];
+          setSelectedApiKey(`temp-${key._id}`);
         } else if (userKeysRes.data.length > 0) {
-          setSelectedApiKey(`user-${userKeysRes.data[0]._id}`);
+          const key = userKeysRes.data[0];
+          setSelectedApiKey(`user-${key._id}`);
         }
       } catch (err) {
         console.error('Error fetching API keys:', err);
@@ -53,32 +48,6 @@ const ChatInterface = () => {
     }
   }, [user]);
 
-  // Fetch available models when API key changes
-  useEffect(() => {
-    const fetchModels = async () => {
-      if (!selectedApiKey) return;
-      
-      try {
-        // Extract key type and ID from the selected key
-        const [keyType, keyId] = selectedApiKey.split('-');
-        
-        const res = await axios.get(`/api/llm/available-models?keyType=${keyType}&keyId=${keyId}`);
-        setAvailableModels(res.data);
-        
-        // Auto-select the first model if available
-        if (res.data.length > 0) {
-          setSelectedModel(res.data[0].id);
-        }
-      } catch (err) {
-        console.error('Error fetching available models:', err);
-        setError('Failed to load available models for this API key');
-      }
-    };
-
-    fetchModels();
-  }, [selectedApiKey]);
-
-  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -89,73 +58,83 @@ const ChatInterface = () => {
 
   const handleApiKeyChange = (keyId) => {
     setSelectedApiKey(keyId);
-    setSelectedModel(''); // Reset model when API key changes
-    setMessages([]); // Clear chat history
-  };
-
-  const handleModelChange = (modelId) => {
-    setSelectedModel(modelId);
+    setMessages([]);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
+    // Validation checks
     if (!input.trim()) return;
     if (!selectedApiKey) {
       setError('Please select an API key');
       return;
     }
-    if (!selectedModel) {
-      setError('Please select a model');
-      return;
-    }
-    
+
     const userMessage = {
       role: 'user',
       content: input,
       timestamp: new Date()
     };
-    
-    // Add user message to chat
+
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
     setError('');
-    
+
     try {
-      // Extract key type and ID from the selected key
+      // Extract key type and ID from selectedApiKey
       const [keyType, keyId] = selectedApiKey.split('-');
       
-      // Send message to API
+      if (!keyType || !keyId) {
+        throw new Error('Invalid API key selection');
+      }
+
+      // Get the actual key data to extract model name
+      let modelId = '';
+      if (keyType === 'temp') {
+        const keyData = temporaryKeys.find(k => k._id === keyId);
+        if (!keyData) throw new Error('Selected temporary key not found');
+        modelId = keyData.name; // Use keyName as modelId for temp keys
+      } else if (keyType === 'user') {
+        const keyData = userApiKeys.find(k => k._id === keyId);
+        if (!keyData) throw new Error('Selected user key not found');
+        modelId = keyData.provider; // Use name as modelId for user keys
+      } else {
+        throw new Error('Unknown key type');
+      }
+
+      if (!modelId) {
+        throw new Error('Could not determine model ID from key');
+      }
+
+      // Make API request with all required fields
       const res = await axios.post('/api/llm/chat', {
         message: input,
         keyType,
         keyId,
-        modelId: selectedModel
+        modelId
       });
-      
-      // Add assistant response to chat
+
       const assistantMessage = {
         role: 'assistant',
         content: res.data.response,
         timestamp: new Date()
       };
-      
+
       setMessages(prev => [...prev, assistantMessage]);
-      
-      // Update token usage
+
       setTokenUsage(prev => ({
         prompt: prev.prompt + res.data.usage.promptTokens,
         completion: prev.completion + res.data.usage.completionTokens,
         total: prev.total + res.data.usage.totalTokens
       }));
-      
-      // If using a temporary key, update its token balance in state
+
       if (keyType === 'temp') {
-        setTemporaryKeys(prev => 
-          prev.map(key => 
-            key._id === keyId 
-              ? { ...key, remainingTokens: res.data.remainingTokens } 
+        setTemporaryKeys(prev =>
+          prev.map(key =>
+            key._id === keyId
+              ? { ...key, remainingTokens: res.data.remainingTokens }
               : key
           )
         );
@@ -168,17 +147,16 @@ const ChatInterface = () => {
     }
   };
 
-  // Get info about selected key
   const getSelectedKeyInfo = () => {
     if (!selectedApiKey) return null;
-    
+
     const [keyType, keyId] = selectedApiKey.split('-');
-    
+
     if (keyType === 'temp') {
       const tempKey = temporaryKeys.find(key => key._id === keyId);
       if (tempKey) {
         return {
-          name: tempKey.keyName,
+          name: tempKey.name,
           provider: tempKey.provider,
           type: 'Temporary',
           remainingTokens: tempKey.remainingTokens
@@ -188,136 +166,124 @@ const ChatInterface = () => {
       const userKey = userApiKeys.find(key => key._id === keyId);
       if (userKey) {
         return {
-          name: userKey.name,
+          name: userKey.provider,
           provider: userKey.provider,
           type: 'Personal',
           remainingTokens: 'N/A (Your own key)'
         };
       }
     }
-    
+
     return null;
   };
-  
+
   const selectedKeyInfo = getSelectedKeyInfo();
 
   return (
-    <div className="py-4 px-0 bg-light min-vh-100" style={{ maxWidth: '100%', overflowX: 'hidden' }}>
-      <div className="row mb-4 g-3" style={{ margin: 0 }}>
-        <div className="col-md-6">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
-              <h5 className="card-title mb-3 text-primary">Select API Key</h5>
-              <ApiKeySelector 
-                temporaryKeys={temporaryKeys} 
-                userApiKeys={userApiKeys}
-                selectedApiKey={selectedApiKey} 
-                onSelectApiKey={handleApiKeyChange} 
-              />
+    <div className="flex h-screen w-full bg-white overflow-hidden">
+      {/* Sidebar */}
+      <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col p-4 overflow-y-auto">
+        <div className="mb-4 pb-2 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800">Model Selection</h3>
+        </div>
+        
+        <ApiKeySelector
+          temporaryKeys={temporaryKeys}
+          userApiKeys={userApiKeys}
+          selectedApiKey={selectedApiKey}
+          onSelectApiKey={handleApiKeyChange}
+        />
+        
+        {selectedKeyInfo && (
+          <div className="bg-white rounded-lg p-3 my-2 shadow-sm">
+            <div className="flex justify-between mb-1 text-sm">
+              <span className="font-medium text-gray-600">Model:</span>
+              <span className="text-gray-800">{selectedKeyInfo.provider}</span>
+            </div>
+            <div className="flex justify-between mb-1 text-sm">
+              <span className="font-medium text-gray-600">Provider:</span>
+              <span className="text-gray-800">{selectedKeyInfo.provider}</span>
+            </div>
+            <div className="flex justify-between mb-1 text-sm">
+              <span className="font-medium text-gray-600">Type:</span>
+              <span className="text-gray-800">{selectedKeyInfo.type}</span>
+            </div>
+            <div className="flex justify-between mb-1 text-sm">
+              <span className="font-medium text-gray-600">Tokens:</span>
+              <span className="text-gray-800">{selectedKeyInfo.remainingTokens}</span>
             </div>
           </div>
-        </div>
-        <div className="col-md-6">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
-              <h5 className="card-title mb-3 text-primary">Select Model</h5>
-              <ModelSelector 
-                models={availableModels} 
-                selectedModel={selectedModel} 
-                onSelectModel={handleModelChange} 
-              />
-            </div>
+        )}
+        
+        <div className="mt-auto bg-white rounded-lg p-3 shadow-sm">
+          <h4 className="text-base font-medium text-gray-800 mb-2">Token Usage</h4>
+          <div className="flex justify-between mb-1 text-sm">
+            <span className="text-gray-600">Prompt:</span>
+            <span className="font-medium text-gray-800">{tokenUsage.prompt}</span>
+          </div>
+          <div className="flex justify-between mb-1 text-sm">
+            <span className="text-gray-600">Completion:</span>
+            <span className="font-medium text-gray-800">{tokenUsage.completion}</span>
+          </div>
+          <div className="flex justify-between mb-1 text-sm">
+            <span className="text-gray-600">Total:</span>
+            <span className="font-medium text-gray-800">{tokenUsage.total}</span>
           </div>
         </div>
       </div>
       
-      {selectedKeyInfo && (
-        <div className={`card shadow-sm border-0 mb-4 ${selectedKeyInfo.type === 'Temporary' ? 'bg-info bg-opacity-10' : 'bg-success bg-opacity-10'}`}>
-          <div className="card-body d-flex justify-content-between align-items-center flex-wrap">
-            <div className="d-flex flex-wrap gap-4">
-              <div>
-                <span className="text-muted fs-6">API Key</span>
-                <h6 className="mb-0">{selectedKeyInfo.name}</h6>
-              </div>
-              <div>
-                <span className="text-muted fs-6">Provider</span>
-                <h6 className="mb-0">{selectedKeyInfo.provider}</h6>
-              </div>
-              <div>
-                <span className="text-muted fs-6">Type</span>
-                <h6 className="mb-0">{selectedKeyInfo.type}</h6>
-              </div>
-              <div>
-                <span className="text-muted fs-6">Tokens</span>
-                <h6 className="mb-0 d-flex align-items-center">
-                  {selectedKeyInfo.remainingTokens}
-                  {selectedKeyInfo.type === 'Temporary' && 
-                    <span className="badge bg-info ms-2">
-                      {parseInt(selectedKeyInfo.remainingTokens).toLocaleString()}
-                    </span>
-                  }
-                </h6>
-              </div>
-            </div>
-            {selectedKeyInfo.type === 'Temporary' && parseInt(selectedKeyInfo.remainingTokens) < 1000 && (
-              <div className="badge bg-warning text-dark mt-2 mt-md-0">
-                Low token balance
-              </div>
-            )}
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col h-full relative">
+        {error && (
+          <div className="bg-red-50 text-red-700 p-2 mx-4 mt-2 rounded-md text-center text-sm">
+            {error}
           </div>
-        </div>
-      )}
-      
-      {error && (
-        <div className="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
-          <i className="fas fa-exclamation-circle me-2"></i>
-          {error}
-          <button type="button" className="btn-close" onClick={() => setError('')} aria-label="Close"></button>
-        </div>
-      )}
-      
-      <div className="card shadow border-0 mb-4">
-        <div className="card-header bg-primary bg-gradient text-white p-3">
-          <h4 className="mb-0">
-            <i className="fas fa-comments me-2"></i>
-            Chat Session
-          </h4>
-        </div>
-        <div className="card-body p-0">
-          <div className="chat-window bg-light" style={{ height: '500px', overflowY: 'auto' }}>
-            {messages.length === 0 ? (
-              <div className="text-center py-5 px-3">
-                <div className="py-5">
-                  <i className="fas fa-comment-dots text-muted mb-3" style={{ fontSize: '3rem' }}></i>
-                  <h5 className="text-primary">Start a new conversation</h5>
-                  <p className="text-muted">Select an API key and model, then send a message to begin</p>
-                </div>
+        )}
+        
+        <div className="flex-1 overflow-y-auto p-4">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
+              <div className="text-5xl mb-4 text-green-600">
+                <i className="fas fa-comment-dots"></i>
               </div>
-            ) : (
-              <div className="messages-container p-3">
-                {messages.map((msg, index) => (
-                  <ChatMessage key={index} message={msg} />
-                ))}
-                {isLoading && (
-                  <div className="typing-indicator my-3 ms-4">
-                    <div className="typing-indicator-bubble">
-                      <span></span>
-                      <span></span>
-                      <span></span>
+              <h2 className="text-2xl font-semibold text-gray-800 mb-2">How can I help you today?</h2>
+              <p className="text-base max-w-md">Select a model from the sidebar to begin chatting</p>
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto">
+              {messages.map((msg, index) => (
+                <ChatMessage key={index} message={msg} />
+              ))}
+              {isLoading && (
+                <div className="flex p-6 bg-gray-50">
+                  <div className="w-8 h-8 flex-shrink-0 bg-indigo-600 rounded-full flex items-center justify-center text-white">
+                    <i className="fas fa-robot text-sm"></i>
+                  </div>
+                  <div className="ml-4 flex-1">
+                    <div className="flex items-center">
+                      <div className="font-medium text-gray-900">Assistant</div>
+                    </div>
+                    <div className="mt-1 text-gray-700">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
+                        <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse delay-100"></div>
+                        <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse delay-200"></div>
+                      </div>
                     </div>
                   </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
         </div>
-        <div className="card-footer border-top p-3 bg-white">
-          <form onSubmit={handleSubmit}>
-            <div className="input-group">
+        
+        <div className="border-t border-gray-200 p-4 bg-white">
+          <form onSubmit={handleSubmit} className="relative max-w-3xl mx-auto">
+            <div className="border border-gray-300 rounded-lg shadow-sm overflow-hidden">
               <textarea
-                className="form-control border-end-0 shadow-none"
-                placeholder="Type your message..."
+                className="w-full px-3 py-2 border-none outline-none resize-none text-base"
+                placeholder="Message..."
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => {
@@ -326,143 +292,29 @@ const ChatInterface = () => {
                     handleSubmit(e);
                   }
                 }}
-                disabled={isLoading || !selectedApiKey || !selectedModel}
-                rows="2"
-                style={{ resize: 'none', borderRadius: '0.375rem 0 0 0.375rem' }}
+                disabled={isLoading || !selectedApiKey}
+                rows="1"
               ></textarea>
-              <button 
-                className="btn btn-primary px-4"
-                type="submit" 
-                disabled={isLoading || !selectedApiKey || !selectedModel}
-                style={{ borderRadius: '0 0.375rem 0.375rem 0' }}
+              <button
+                className={`absolute right-2 bottom-2 w-8 h-8 rounded-md flex items-center justify-center text-white ${
+                  isLoading || !selectedApiKey ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                }`}
+                type="submit"
+                disabled={isLoading || !selectedApiKey}
               >
                 {isLoading ? (
-                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  <div className="w-4 h-4 border-2 border-white rounded-full border-t-transparent animate-spin"></div>
                 ) : (
-                  <i className="fas fa-paper-plane"></i>
+                  <i className="fas fa-paper-plane text-sm"></i>
                 )}
               </button>
             </div>
-            <div className="form-text text-muted small mt-2">
+            <div className="text-center mt-2 text-xs text-gray-500">
               Press Enter to send, Shift+Enter for new line
             </div>
           </form>
         </div>
       </div>
-      
-      <div className="card shadow border-0">
-        <div className="card-header bg-info bg-gradient text-white p-3">
-          <h5 className="mb-0">
-            <i className="fas fa-chart-bar me-2"></i>
-            Token Usage Statistics
-          </h5>
-        </div>
-        <div className="card-body">
-          <div className="row g-3">
-            <div className="col-md-4">
-              <div className="card h-100 border-0 shadow-sm text-center hover-shadow">
-                <div className="card-body py-4">
-                  <div className="icon-circle bg-primary bg-opacity-10 text-primary mb-3">
-                    <i className="fas fa-file-import"></i>
-                  </div>
-                  <h5 className="card-title">Prompt Tokens</h5>
-                  <p className="display-5 fw-bold text-primary mb-0">{tokenUsage.prompt.toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-            <div className="col-md-4">
-              <div className="card h-100 border-0 shadow-sm text-center hover-shadow">
-                <div className="card-body py-4">
-                  <div className="icon-circle bg-success bg-opacity-10 text-success mb-3">
-                    <i className="fas fa-file-export"></i>
-                  </div>
-                  <h5 className="card-title">Completion Tokens</h5>
-                  <p className="display-5 fw-bold text-success mb-0">{tokenUsage.completion.toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-            <div className="col-md-4">
-              <div className="card h-100 border-0 shadow-sm text-center hover-shadow">
-                <div className="card-body py-4">
-                  <div className="icon-circle bg-info bg-opacity-10 text-info mb-3">
-                    <i className="fas fa-calculator"></i>
-                  </div>
-                  <h5 className="card-title">Total Tokens</h5>
-                  <p className="display-5 fw-bold text-info mb-0">{tokenUsage.total.toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* CSS for the component */}
-      <style jsx>{`
-        .hover-shadow:hover {
-          transform: translateY(-3px);
-          transition: transform 0.3s ease;
-          box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
-        }
-        
-        .icon-circle {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 60px;
-          height: 60px;
-          border-radius: 50%;
-          font-size: 1.5rem;
-        }
-        
-        .typing-indicator {
-          display: flex;
-          align-items: flex-end;
-        }
-        
-        .typing-indicator-bubble {
-          background-color: #e0e0e0;
-          padding: 12px 18px;
-          border-radius: 20px;
-          display: inline-flex;
-          align-items: center;
-          margin-right: 10px;
-        }
-        
-        .typing-indicator-bubble span {
-          height: 8px;
-          width: 8px;
-          background-color: #777;
-          border-radius: 50%;
-          display: inline-block;
-          margin-right: 5px;
-          animation: typing 1s infinite ease-in-out;
-        }
-        
-        .typing-indicator-bubble span:nth-child(1) {
-          animation-delay: 0s;
-        }
-        
-        .typing-indicator-bubble span:nth-child(2) {
-          animation-delay: 0.2s;
-        }
-        
-        .typing-indicator-bubble span:nth-child(3) {
-          animation-delay: 0.4s;
-          margin-right: 0;
-        }
-        
-        @keyframes typing {
-          0% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-8px);
-          }
-          100% {
-            transform: translateY(0px);
-          }
-        }
-      `}</style>
     </div>
   );
 };
