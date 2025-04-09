@@ -1,0 +1,231 @@
+const express = require('express');
+const router = express.Router();
+const { auth } = require('../middleware/auth');
+const { OpenAI } = require('openai');
+const { Anthropic } = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const User = require('../models/User');
+const { decrypt } = require('../utils/crypto');
+
+// ========= Infer provider from model name ========= //
+function getProviderFromModel(modelName) {
+  const lower = modelName.toLowerCase();
+  if (lower.includes('gpt') || lower.startsWith('gpt')) return 'openai';
+  if (lower.includes('claude')) return 'anthropic';
+  if (lower.includes('gemini')) return 'gemini';
+  throw new Error(`Unable to determine provider from model name: ${modelName}`);
+}
+
+// ========= Get available models ========= //
+router.get('/available-models', auth, async (req, res) => {
+  try {
+    const { keyType, keyId } = req.query;
+    if (!keyType || !keyId) return res.status(400).json({ message: 'Key type and ID are required' });
+
+    const user = await User.findById(req.user._id);
+    let apiKey, provider, models = [];
+
+    if (keyType === 'temp') {
+      const tempKey = user.temporaryTokens.find(k => k._id.toString() === keyId);
+      if (!tempKey) return res.status(404).json({ message: 'Temporary API key not found' });
+
+      apiKey = decrypt(tempKey.apiKey);
+      provider = getProviderFromModel(tempKey.name);
+    } else if (keyType === 'user') {
+      const userKey = user.api_keys.find(k => k._id.toString() === keyId);
+      if (!userKey) return res.status(404).json({ message: 'API key not found' });
+
+      apiKey = decrypt(userKey.key);
+      provider = getProviderFromModel(userKey.name);
+    } else {
+      return res.status(400).json({ message: 'Invalid key type' });
+    }
+
+    switch (provider) {
+      case 'openai':
+        models = [
+          { id: 'gpt-4', name: 'gpt-4', description: 'OpenAI GPT-4' },
+          { id: 'gpt-3.5-turbo', name: 'gpt-3.5-turbo', description: 'OpenAI GPT-3.5 Turbo' }
+        ];
+        break;
+
+      case 'anthropic':
+        models = [
+          { id: 'claude-3-opus-20240229', name: 'claude-3-opus-20240229', description: 'Claude 3 Opus' },
+          { id: 'claude-3-sonnet-20240229', name: 'claude-3-sonnet-20240229', description: 'Claude 3 Sonnet' },
+          { id: 'claude-3-haiku-20240307', name: 'claude-3-haiku-20240307', description: 'Claude 3 Haiku' }
+        ];
+        break;
+
+      case 'gemini':
+        models = [
+          { id: 'gemini-1.5-pro', name: 'gemini-1.5-pro', description: 'Gemini 1.5 Pro' },
+          { id: 'gemini-2.0-flash', name: 'gemini-2.0-flash', description: 'Gemini 2.0 Flash' }
+        ];
+        break;
+
+      default:
+        return res.status(400).json({ message: 'Unsupported API provider' });
+    }
+
+    res.json(models);
+  } catch (error) {
+    console.error('Error fetching available models:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ========= Chat endpoint ========= //
+router.post('/chat', auth, async (req, res) => {
+  try {
+    const { message, keyType, keyId, modelId } = req.body;
+    if (!message || !keyType || !keyId || !modelId) {
+      return res.status(400).json({ message: 'Message, key type, key ID, and model ID are required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    let apiKey, provider, remainingTokens = null;
+
+    if (keyType === 'temp') {
+      const tempKey = user.temporaryTokens.find(k => k._id.toString() === keyId);
+      if (!tempKey) return res.status(404).json({ message: 'Temporary API key not found' });
+
+      if (tempKey.tokensRemaining <= 0) {
+        return res.status(400).json({ message: 'Insufficient tokens. Please purchase more.' });
+      }
+
+      apiKey = decrypt(tempKey.apiKey);
+      provider = getProviderFromModel(tempKey.name);
+
+      const response = await handleProviderRequest(provider, message, tempKey.name, apiKey);
+      const tokensUsed = response.usage.totalTokens;
+
+      if (tokensUsed > tempKey.tokensRemaining) {
+        return res.status(400).json({ message: 'Insufficient tokens for this request.' });
+      }
+
+      tempKey.tokensRemaining -= tokensUsed;
+      if (tempKey.tokensRemaining <= 0) {
+        user.temporaryTokens = user.temporaryTokens.filter(k => k._id.toString() !== keyId);
+      }
+
+      await user.save();
+      remainingTokens = tempKey.tokensRemaining;
+
+      return res.json({
+        response: response.text,
+        usage: response.usage,
+        remainingTokens
+      });
+
+    } else if (keyType === 'user') {
+      const userKey = user.api_keys.find(k => k._id.toString() === keyId);
+      if (!userKey) return res.status(404).json({ message: 'API key not found' });
+
+      apiKey = decrypt(userKey.key);
+      provider = getProviderFromModel(userKey.name);
+
+      const response = await handleProviderRequest(provider, message, userKey.name, apiKey);
+      const tokensUsed = response.usage.totalTokens;
+
+      if (userKey.available < tokensUsed) {
+        return res.status(400).json({ message: 'Insufficient available tokens for this request.' });
+      }
+
+      userKey.available -= tokensUsed;
+      await user.save();
+
+      return res.json({
+        response: response.text,
+        usage: response.usage,
+        remainingTokens: userKey.available
+      });
+    }
+
+  } catch (error) {
+    console.error('Error processing chat request:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ========= Provider handlers ========= //
+
+async function handleProviderRequest(provider, message, modelId, apiKey) {
+  switch (provider) {
+    case 'openai':
+      return await handleOpenAIRequest(message, modelId, apiKey);
+    case 'anthropic':
+      return await handleAnthropicRequest(message, modelId, apiKey);
+    case 'gemini':
+      return await handleGeminiRequest(message, modelId, apiKey);
+    default:
+      throw new Error('Unsupported provider');
+  }
+}
+
+async function handleOpenAIRequest(message, modelId, apiKey) {
+  const openai = new OpenAI({ apiKey });
+  const response = await openai.chat.completions.create({
+    model: modelId,
+    messages: [{ role: 'user', content: message }],
+    temperature: 0.7,
+  });
+
+  return {
+    text: response.choices[0].message.content,
+    usage: {
+      promptTokens: response.usage.prompt_tokens,
+      completionTokens: response.usage.completion_tokens,
+      totalTokens: response.usage.total_tokens,
+    }
+  };
+}
+
+async function handleAnthropicRequest(message, modelId, apiKey) {
+  const anthropic = new Anthropic({ apiKey });
+  const response = await anthropic.messages.create({
+    model: modelId,
+    messages: [{ role: 'user', content: message }],
+    max_tokens: 1000,
+  });
+
+  const promptTokens = Math.ceil(message.length / 4);
+  const completionTokens = Math.ceil(response.content[0].text.length / 4);
+
+  return {
+    text: response.content[0].text,
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens
+    }
+  };
+}
+
+async function handleGeminiRequest(message, modelId, apiKey) {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: `models/${modelId}`,
+    generationConfig: {
+      temperature: 0.7
+    }
+  });
+
+  const chat = model.startChat({ history: [] });
+  const result = await chat.sendMessage(message);
+  const text = result.response.text();
+
+  const promptTokens = Math.ceil(message.length / 4);
+  const completionTokens = Math.ceil(text.length / 4);
+
+  return {
+    text,
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens
+    }
+  };
+}
+
+module.exports = router;
