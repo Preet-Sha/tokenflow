@@ -75,6 +75,85 @@ router.get('/available-models', auth, async (req, res) => {
   }
 });
 
+// ========= Buy tokens from sellers ========= //
+router.post('/buy-tokens', auth, async (req, res) => {
+  try {
+    const { sellerId, tokenId, amount } = req.body;
+    if (!sellerId || !tokenId || !amount || amount <= 0) {
+      return res.status(400).json({ message: 'Seller ID, token ID, and valid amount are required' });
+    }
+
+    // Find the buyer (current user)
+    const buyer = await User.findById(req.user._id);
+    if (!buyer) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if buyer has enough balance
+    if (buyer.amount < amount) {
+      return res.status(400).json({ message: 'Insufficient balance. Please add funds to continue.' });
+    }
+
+    // Find the seller
+    const seller = await User.findById(sellerId);
+    if (!seller) {
+      return res.status(404).json({ message: 'Seller not found' });
+    }
+
+    // Find the token being sold
+    const token = seller.temporaryTokens.find(t => t._id.toString() === tokenId);
+    if (!token) {
+      return res.status(404).json({ message: 'Token not found' });
+    }
+
+    // Calculate how many tokens the buyer will receive
+    const tokensToReceive = Math.floor(amount / token.pricePerToken);
+    if (tokensToReceive <= 0) {
+      return res.status(400).json({ message: 'Amount too small to purchase any tokens' });
+    }
+
+    // Check if seller has enough tokens to sell
+    if (token.tokensRemaining < tokensToReceive) {
+      return res.status(400).json({ message: 'Seller does not have enough tokens available' });
+    }
+
+    // Update buyer's balance
+    buyer.amount -= amount;
+
+    // Update seller's balance
+    seller.amount += amount;
+
+    // Update token remaining count
+    token.tokensRemaining -= tokensToReceive;
+
+    // Add the purchased tokens to the buyer's account
+    buyer.temporaryTokens.push({
+      name: token.name,
+      apiKey: token.apiKey, // This should be encrypted
+      tokensRemaining: tokensToReceive,
+      expiresAt: token.expiresAt,
+      pricePerToken: token.pricePerToken
+    });
+
+    // Remove token from seller if no tokens remaining
+    if (token.tokensRemaining <= 0) {
+      seller.temporaryTokens = seller.temporaryTokens.filter(t => t._id.toString() !== tokenId);
+    }
+
+    // Save changes
+    await Promise.all([buyer.save(), seller.save()]);
+
+    res.json({
+      message: 'Tokens purchased successfully',
+      tokensReceived: tokensToReceive,
+      remainingBalance: buyer.amount
+    });
+  } catch (error) {
+    console.error('Error purchasing tokens:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // ========= Chat endpoint ========= //
 router.post('/chat', auth, async (req, res) => {
   try {
@@ -84,6 +163,10 @@ router.post('/chat', auth, async (req, res) => {
     }
 
     const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
     let apiKey, provider, remainingTokens = null;
 
     if (keyType === 'temp') {
@@ -97,7 +180,7 @@ router.post('/chat', auth, async (req, res) => {
       apiKey = decrypt(tempKey.apiKey);
       provider = getProviderFromModel(tempKey.name);
 
-      const response = await handleProviderRequest(provider, message, tempKey.name, apiKey);
+      const response = await handleProviderRequest(provider, message, modelId, apiKey);
       const tokensUsed = response.usage.totalTokens;
 
       if (tokensUsed > tempKey.tokensRemaining) {
@@ -125,7 +208,7 @@ router.post('/chat', auth, async (req, res) => {
       apiKey = decrypt(userKey.key);
       provider = getProviderFromModel(userKey.name);
 
-      const response = await handleProviderRequest(provider, message, userKey.name, apiKey);
+      const response = await handleProviderRequest(provider, message, modelId, apiKey);
       const tokensUsed = response.usage.totalTokens;
 
       if (userKey.available < tokensUsed) {
@@ -140,6 +223,8 @@ router.post('/chat', auth, async (req, res) => {
         usage: response.usage,
         remainingTokens: userKey.available
       });
+    } else {
+      return res.status(400).json({ message: 'Invalid key type' });
     }
 
   } catch (error) {
