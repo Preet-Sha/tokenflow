@@ -1,27 +1,35 @@
 import styled from "styled-components";
-const show = keyframes`
-  0%, 49.99% {
-		opacity: 0;
-		z-index: 1;
-	}
+// const show = keyframes`
+//   0%, 49.99% {
+// 		opacity: 0;
+// 		z-index: 1;
+// 	}
 
-	50%, 100% {
-		opacity: 1;
-		z-index: 5;
-	}
+// 	50%, 100% {
+// 		opacity: 1;
+// 		z-index: 5;
+// 	}
+// `;
+
+// const hide = keyframes`
+//   0%, 49.99% {
+//     opacity: 1;
+//     z-index: 5;
+//   }
+
+//   50%, 100% {
+//     opacity: 0;
+//     z-index: 1;
+//   }
+// `
+
+export const CenteredWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #f5f5f5; /* Optional background */
 `;
-
-const hide = keyframes`
-  0%, 49.99% {
-    opacity: 1;
-    z-index: 5;
-  }
-
-  50%, 100% {
-    opacity: 0;
-    z-index: 1;
-  }
-`
 
 export const Container = styled.div`
   background-color: #fff;

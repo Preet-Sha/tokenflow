@@ -4,7 +4,7 @@ import * as Components from "./Components";
 import "./style.css";
 import { AuthContext } from "../context/AuthContext";
 
-function Login() {
+const Login=()=>{
   const { login, register, isAuthenticated, error } = useContext(AuthContext);
   const [signIn, toggle] = React.useState(true);
   
@@ -72,6 +72,7 @@ function Login() {
   }
 
   return (
+    <Components.CenteredWrapper>
     <Components.Container>
       <Components.SignUpContainer signingIn={signIn}>
         <Components.Form onSubmit={onSignupSubmit}>
@@ -163,6 +164,7 @@ function Login() {
         </Components.Overlay>
       </Components.OverlayContainer>
     </Components.Container>
+    </Components.CenteredWrapper>
   );
 }
 
