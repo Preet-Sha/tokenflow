@@ -25,7 +25,7 @@ const Login = () => {
     name: true
   });
   const [alert, setAlert] = useState(null);
-
+  
   // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -40,7 +40,7 @@ const Login = () => {
   const switchMode = (newMode, direction = 'right') => {
     // First set the exit animation
     setAnimation(direction === 'right' ? 'animate-slideOutLeft' : 'animate-slideOutRight');
-    
+  
     // After animation completes, change mode and set entry animation
     setTimeout(() => {
       setAuthMode(newMode);
@@ -50,7 +50,7 @@ const Login = () => {
       setAlert(null);
     }, 200);
   };
-
+  
   // Validate email format
   const validateEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -60,7 +60,7 @@ const Login = () => {
   const validatePassword = (password) => {
     return password.length >= 6;
   };
-
+  
   // Handle login submission
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -75,15 +75,15 @@ const Login = () => {
     });
     
     if (emailValid && passwordValid) {
-      try {
+    try {
         await login({ email: formData.email, password: formData.password });
         // If login is successful, isAuthenticated will be true and redirect will happen
-      } catch (err) {
-        setAlert(error || 'Login failed');
+    } catch (err) {
+      setAlert(error || 'Login failed');
       }
     }
   };
-
+  
   // Handle register submission
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
@@ -106,15 +106,15 @@ const Login = () => {
     }
     
     if (emailValid && passwordValid && nameValid && passwordsMatch) {
-      try {
+    try {
         await register({ 
           name: formData.name, 
           email: formData.email, 
           password: formData.password 
         });
         // If registration is successful, isAuthenticated will be true and redirect will happen
-      } catch (err) {
-        setAlert(error || 'Registration failed');
+    } catch (err) {
+      setAlert(error || 'Registration failed');
       }
     }
   };
@@ -123,7 +123,7 @@ const Login = () => {
   useEffect(() => {
     setAnimation('animate-fadeIn');
   }, []);
-
+  
   // Redirect if authenticated
   if (isAuthenticated) {
     return <Navigate to="/dashboard" />;
@@ -148,21 +148,23 @@ const Login = () => {
               <div className="feature-icon">
                 <Check className="icon" size={20} />
               </div>
-              <p>Advanced security with end-to-end encryption</p>
+              <p>✦ Trade model tokens securely
+              </p>
             </div>
             
             <div className="feature-item">
               <div className="feature-icon">
                 <Check className="icon" size={20} />
               </div>
-              <p>Seamless integration with your favorite tools</p>
+              <p>✦ Unlock unused AI resources
+              </p>
             </div>
             
             <div className="feature-item">
               <div className="feature-icon">
                 <Check className="icon" size={20} />
               </div>
-              <p>Real-time collaboration and data synchronization</p>
+              <p>✦ Empower builders, developers, and innovators</p>
             </div>
           </div>
         </div>
@@ -346,9 +348,9 @@ const Login = () => {
                     <User size={16} />
                   </div>
                   <input
-                    type="text"
+            type="text" 
                     id="name"
-                    name="name"
+            name="name"
                     value={formData.name}
                     onChange={handleChange}
                     placeholder="John Doe"
@@ -370,7 +372,7 @@ const Login = () => {
                   <input
                     type="text"
                     id="register-email"
-                    name="email"
+            name="email"
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="you@example.com"
@@ -392,7 +394,7 @@ const Login = () => {
                   <input
                     type={showPassword ? "text" : "password"}
                     id="register-password"
-                    name="password"
+            name="password"
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="••••••••"
@@ -425,11 +427,11 @@ const Login = () => {
                   <input
                     type={showPassword ? "text" : "password"}
                     id="password2"
-                    name="password2"
+            name="password2"
                     value={formData.password2}
                     onChange={handleChange}
                     placeholder="••••••••"
-                  />
+          />
                 </div>
                 {!validations.password2 && (
                   <p className="error-message">Passwords do not match</p>
@@ -470,7 +472,7 @@ const Login = () => {
                   className="text-link"
                   onClick={() => switchMode('login')}
                 >
-                  Sign In
+              Sign In
                 </button>
               </p>
             </div>

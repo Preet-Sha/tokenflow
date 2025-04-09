@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Settings2, SendHorizontal, X } from "lucide-react";
 
 export default function AIChat() {
   const [messages, setMessages] = useState([
@@ -11,11 +12,10 @@ export default function AIChat() {
   const [provider, setProvider] = useState("openai");
   const [model, setModel] = useState("gpt-4");
   const [temperature, setTemperature] = useState(0.7);
-  
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  
-  // Models by provider mapping
+
   const modelsByProvider = {
     openai: [
       { value: "gpt-4", label: "GPT-4" },
@@ -37,45 +37,35 @@ export default function AIChat() {
     ]
   };
 
-  // Scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Update models when provider changes
   useEffect(() => {
     setModel(modelsByProvider[provider][0].value);
   }, [provider]);
 
-  // Mock AI API call
   const callAI = async (message) => {
-    // In a real implementation, this would call the respective API
     setIsTyping(true);
-    
     try {
-      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // This is where you would implement the actual API call based on provider
       let response;
-      
       switch(provider) {
         case "openai":
-          response = "This is a simulated response from GPT. In a real implementation, this would call the OpenAI API with your message.";
+          response = "This is a simulated GPT-4 response.";
           break;
         case "anthropic":
-          response = "This is a simulated response from Claude. In a real implementation, this would call the Anthropic API with your message.";
+          response = "This is a simulated Claude response.";
           break;
         case "gemini":
-          response = "This is a simulated response from Gemini. In a real implementation, this would call the Google API with your message.";
+          response = "This is a simulated Gemini response.";
           break;
         case "mistral":
-          response = "This is a simulated response from Mistral AI. In a real implementation, this would call the Mistral API with your message.";
+          response = "This is a simulated Mistral response.";
           break;
         default:
           response = "Response from AI";
       }
-      
       return response;
     } finally {
       setIsTyping(false);
@@ -84,13 +74,9 @@ export default function AIChat() {
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
-    
-    // Add user message
     setMessages(prev => [...prev, { sender: "user", content: inputMessage }]);
     setInputMessage("");
-    
     try {
-      // Get AI response
       const aiResponse = await callAI(inputMessage);
       setMessages(prev => [...prev, { sender: "ai", content: aiResponse }]);
     } catch (error) {
@@ -106,89 +92,69 @@ export default function AIChat() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-gray-800 text-white p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold">Universal AI Chat</h1>
-        <button 
-          onClick={() => setSettingsOpen(true)}
-          className="text-2xl"
-        >
-          ⚙️
+    <div className="flex flex-col h-screen bg-gradient-to-b from-gray-100 to-gray-200">
+      <header className="bg-indigo-600 text-white px-6 py-4 flex justify-between items-center shadow-md">
+        <h1 className="text-2xl font-bold">Universal AI Chat</h1>
+        <button onClick={() => setSettingsOpen(true)}>
+          <Settings2 className="w-6 h-6" />
         </button>
       </header>
-      
-      {/* Chat Container */}
+
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.map((message, index) => (
-            <div 
-              key={index} 
-              className={`max-w-3/4 p-3 rounded-lg ${
-                message.sender === "user" 
-                  ? "bg-blue-100 ml-auto" 
-                  : "bg-white"
-              }`}
-            >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+            <div key={index} className={`w-fit max-w-[70%] px-4 py-3 rounded-2xl shadow-sm text-sm whitespace-pre-wrap ${
+              message.sender === "user" ? "ml-auto bg-blue-100 text-gray-800" : "bg-white text-gray-700"
+            }`}>
+              {message.content}
             </div>
           ))}
-          
+
           {isTyping && (
-            <div className="bg-gray-100 p-3 rounded-lg inline-block">
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
-                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
+            <div className="bg-white px-4 py-3 rounded-2xl shadow-sm inline-block">
+              <div className="flex gap-1">
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" />
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-100" />
+                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce delay-200" />
               </div>
             </div>
           )}
-          
           <div ref={messagesEndRef} />
         </div>
-        
-        {/* Input Area */}
-        <div className="p-4 bg-white border-t">
-          <div className="flex space-x-2">
-            <textarea
-              ref={inputRef}
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your message here..."
-              className="flex-1 p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={1}
-            />
-            <button
-              onClick={handleSendMessage}
-              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition"
-            >
-              Send
-            </button>
-          </div>
+
+        <div className="p-4 bg-white border-t flex gap-2">
+          <textarea
+            ref={inputRef}
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message here..."
+            className="flex-1 p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+            rows={1}
+          />
+          <button
+            onClick={handleSendMessage}
+            className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition shadow-md"
+          >
+            <SendHorizontal className="w-5 h-5" />
+          </button>
         </div>
       </div>
-      
-      {/* Settings Panel (Slide-in) */}
+
       {settingsOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-end z-50">
-          <div className="bg-white w-80 h-full p-4 overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Settings</h2>
-              <button 
-                onClick={() => setSettingsOpen(false)}
-                className="text-2xl"
-              >
-                ×
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+          <div className="bg-white w-96 h-full p-6 overflow-y-auto shadow-lg">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Settings</h2>
+              <button onClick={() => setSettingsOpen(false)}>
+                <X className="w-6 h-6" />
               </button>
             </div>
-            
+
             <div className="space-y-6">
-              {/* AI Provider */}
               <div>
-                <h3 className="font-medium mb-2">AI Provider</h3>
-                <select 
+                <label className="block mb-1 font-medium">AI Provider</label>
+                <select
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                   className="w-full p-2 border rounded"
@@ -199,22 +165,20 @@ export default function AIChat() {
                   <option value="mistral">Mistral AI</option>
                 </select>
               </div>
-              
-              {/* API Key */}
+
               <div>
-                <h3 className="font-medium mb-2">API Key</h3>
+                <label className="block mb-1 font-medium">API Key</label>
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Enter your API key"
                   className="w-full p-2 border rounded"
+                  placeholder="Enter your API key"
                 />
               </div>
-              
-              {/* Model Selection */}
+
               <div>
-                <h3 className="font-medium mb-2">Model</h3>
+                <label className="block mb-1 font-medium">Model</label>
                 <select
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
@@ -227,12 +191,11 @@ export default function AIChat() {
                   ))}
                 </select>
               </div>
-              
-              {/* Temperature */}
+
               <div>
-                <h3 className="font-medium mb-2">
+                <label className="block mb-1 font-medium">
                   Temperature: {temperature}
-                </h3>
+                </label>
                 <input
                   type="range"
                   min="0"

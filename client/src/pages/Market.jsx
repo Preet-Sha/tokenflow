@@ -92,6 +92,11 @@ const Market = () => {
       setFiltered(refreshed.data);
       setUserBalance(userRes.data.amount || 0);
       setShowConfirmModal(false);
+      
+      // Call the onPurchaseComplete callback if provided
+      if (props.onPurchaseComplete && typeof props.onPurchaseComplete === 'function') {
+        props.onPurchaseComplete();
+      }
     } catch (err) {
       alert(err.response?.data?.message || 'Error buying tokens');
     } finally {
