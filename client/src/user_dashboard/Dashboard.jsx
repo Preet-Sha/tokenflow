@@ -26,7 +26,7 @@ import Market from '../pages/Market';
 import ChatInterface from '../chat/ChatInterface';
 import '../css/Dashboard.css';
 import '../css/ChatInterface.css';
-import Settings from './settings';
+import Settings from './Settings';
 
 // SVG defs for gradient definitions
 const SvgDefs = () => (
