@@ -33,6 +33,10 @@ const listingSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  upi_id:{
+    type: String,
+    default: ''
   }
 });
 
