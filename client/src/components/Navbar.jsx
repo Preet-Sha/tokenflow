@@ -56,8 +56,7 @@ const Navbar = () => {
     // --- Links for Guest Users (Desktop) ---
     const guestLinks = (
         <>
-            <NavLink to="/register" className={getNavLinkClass}>Register</NavLink>
-            <NavLink to="/login" className={getNavLinkClass}>Login</NavLink>
+            <NavLink to="/login" className={getNavLinkClass}>Login / Register</NavLink>
         </>
     );
 
@@ -87,8 +86,7 @@ const Navbar = () => {
     // --- Links for Guest Users (Mobile) ---
     const mobileGuestLinks = (
         <>
-            <NavLink to="/register" className={getMobileNavLinkClass} onClick={() => setIsMobileMenuOpen(false)}>Register</NavLink>
-            <NavLink to="/login" className={getMobileNavLinkClass} onClick={() => setIsMobileMenuOpen(false)}>Login</NavLink>
+            <NavLink to="/login" className={getMobileNavLinkClass} onClick={() => setIsMobileMenuOpen(false)}>Login / Register</NavLink>
         </>
     );
 
