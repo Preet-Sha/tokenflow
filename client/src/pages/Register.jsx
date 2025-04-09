@@ -72,6 +72,7 @@ function Login() {
   }
 
   return (
+    <Components.CenteredWrapper>
     <Components.Container>
       <Components.SignUpContainer signingIn={signIn}>
         <Components.Form onSubmit={onSignupSubmit}>
@@ -163,6 +164,7 @@ function Login() {
         </Components.Overlay>
       </Components.OverlayContainer>
     </Components.Container>
+    </Components.CenteredWrapper>
   );
 }
 
