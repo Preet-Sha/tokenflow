@@ -92,6 +92,7 @@ const ChatInterface = () => {
 
       // Get the actual key data to extract model name
       let modelId = '';
+      console.log(keyType);
       if (keyType === 'temp') {
         const keyData = temporaryKeys.find(k => k._id === keyId);
         if (!keyData) throw new Error('Selected temporary key not found');
@@ -99,7 +100,7 @@ const ChatInterface = () => {
       } else if (keyType === 'user') {
         const keyData = userApiKeys.find(k => k._id === keyId);
         if (!keyData) throw new Error('Selected user key not found');
-        modelId = keyData.provider; // Use name as modelId for user keys
+        modelId = keyData.name; // Use name as modelId for user keys
       } else {
         throw new Error('Unknown key type');
       }
