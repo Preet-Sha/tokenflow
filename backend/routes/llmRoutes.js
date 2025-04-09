@@ -208,8 +208,20 @@ router.post('/chat', auth, async (req, res) => {
         return res.status(400).json({ message: 'Insufficient tokens. Please purchase more.' });
       }
 
-      apiKey = decrypt(tempKey.apiKey);
-      provider = getProviderFromModel(tempKey.name);
+      // Find the seller user
+      const seller = await User.findById(tempKey.sellerId);
+      if (!seller) {
+        return res.status(404).json({ message: 'Seller not found' });
+      }
+
+      // Find the original API key in seller's API keys
+      const originalApiKey = seller.api_keys.find(k => k._id.toString() === tempKey.originalApiKeyId.toString());
+      if (!originalApiKey) {
+        return res.status(404).json({ message: 'Original API key not found' });
+      }
+
+      apiKey = decrypt(originalApiKey.key);
+      provider = getProviderFromModel(tempKey.apiKeyName || originalApiKey.name);
 
       const response = await handleProviderRequest(provider, message, modelId, apiKey);
       const tokensUsed = response.usage.totalTokens;
@@ -263,7 +275,6 @@ router.post('/chat', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
-
 // ========= Provider handlers ========= //
 
 async function handleProviderRequest(provider, message, modelId, apiKey) {
