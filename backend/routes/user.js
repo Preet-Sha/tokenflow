@@ -36,7 +36,28 @@ router.get('/temporary-keys', auth, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json(user.temporaryTokens);
+    const enrichedTempKeys = await Promise.all(user.temporaryTokens.map(async (tempKey) => {
+      const seller = await User.findById(tempKey.sellerId);
+      if (!seller) return null;
+
+      const originalKey = seller.api_keys.id(tempKey.originalApiKeyId);
+      if (!originalKey) return null;
+
+      return {
+        _id: tempKey._id,
+        key: originalKey.key,
+        name: tempKey.apiKeyName,
+        tokensRemaining: tempKey.tokensRemaining,
+        createdAt: tempKey.purchasedAt,
+        provider: originalKey.name, // assuming `name` is the provider/model name
+        type: 'temporary'
+      };
+    }));
+
+    // Filter out nulls in case of missing keys or sellers
+    const filteredKeys = enrichedTempKeys.filter(key => key !== null);
+
+    res.json(filteredKeys);
   } catch (error) {
     console.error('Error fetching temporary API keys:', error);
     res.status(500).json({ message: 'Server error' });
