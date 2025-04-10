@@ -10,7 +10,7 @@ import Market from './pages/Market';
 import AdminDashboard from './admin_dashboard/AdminDashboard';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
-
+import Footer from './components/Footer';
 import ChatInterface from './chat/ChatInterface';
 import './css/ChatInterface.css';
 
@@ -53,9 +53,11 @@ function App() {
               path="/chat" 
               element={<PrivateRoute><ChatInterface/></PrivateRoute>} />
             </Routes>
+            <Footer/>
           </div>
         </div>
       </Router>
+ 
     </AuthProvider>
   );
 }

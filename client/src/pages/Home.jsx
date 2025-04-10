@@ -309,7 +309,7 @@ const Home = () => {
               variants={fadeInUp}
               whileHover="hover"
               whileTap={{ scale: 0.95 }}
-              onClick={() => navigate('/signup')} 
+              onClick={() => navigate('/login')} 
               className="px-8 py-3 bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 font-medium rounded-lg transition-all duration-300 text-lg hover:shadow-lg"
               custom={buttonHoverEffects}
             >
@@ -718,7 +718,7 @@ const Home = () => {
                 boxShadow: "0px 10px 20px rgba(255, 255, 255, 0.2)",
               }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => navigate('/signup')}
+              onClick={() => navigate('/login')}
             >
               <motion.span 
                 className="absolute inset-0 bg-gradient-to-r from-indigo-100 to-white opacity-0"
