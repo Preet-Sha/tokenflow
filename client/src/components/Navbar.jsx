@@ -86,7 +86,7 @@ const Navbar = () => {
 
         {/* Mobile Menu Button */}
         <button 
-          className="md:hidden z-20 relative w-10 h-10 focus:outline-none"
+          className="md:hidden  z-20 relative w-10 h-10 focus:outline-none"
           onClick={toggleMobileMenu}
           aria-label="Toggle menu"
         >
@@ -111,7 +111,7 @@ const Navbar = () => {
 
         {/* Mobile Navigation Menu */}
         <nav 
-          className={`fixed top-0 left-0 w-full h-screen bg-indigo-600 dark:bg-gray-800 z-10 transform transition-transform duration-300 ease-in-out ${
+          className={`fixed pr top-0 left-0 w-full h-screen bg-indigo-600 dark:bg-gray-800 z-10 transform transition-transform duration-300 ease-in-out ${
             mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
